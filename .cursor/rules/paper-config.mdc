@@ -1,0 +1,12 @@
+---
+description: Configuration handling
+globs: **/*.java
+alwaysApply: false
+---
+
+# Configuration
+
+- **Do not hardcode magic values**.
+- Use `config.yml` defaults.
+- Handle missing or malformed config values **safely**.
+- Support reloads without full server restart when reasonable.

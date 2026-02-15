@@ -1,0 +1,34 @@
+---
+description: General coding practices and clean code
+globs: **/*.java
+alwaysApply: false
+---
+
+# Coding Practices
+
+- **Keep methods small and focused**; extract helpers when logic grows.
+- **DRY**: Avoid duplication; extract common logic into shared methods or utilities.
+- **Single responsibility**: One class/method, one job.
+- **Clear naming**: Methods do what their names say; avoid `doStuff`, `handle`, generic names.
+- **Fail fast**: Validate inputs at boundaries; fail with clear messages rather than propagating bad state.
+- **Prefer immutable data** where possible (records, final fields).
+- **Avoid deep nesting**; use early returns or extract methods to flatten conditionals.
+
+# Error Handling
+
+- **Log exceptions** with context (plugin name, operation) before rethrowing or handling.
+- Use appropriate log levels: **WARN** for recoverable, **SEVERE** for unexpected/critical.
+- Do not swallow exceptions; at minimum log them.
+- Return or throw; avoid silent failures.
+
+# Logging
+
+- Use the plugin's `Logger` from `getLogger()`.
+- Log actionable information; avoid noisy or redundant logs in hot paths.
+- Include identifiers when useful (player name, world, coordinates, etc.).
+
+# Comments & Documentation
+
+- Comment **why**, not **what**; code should be self-explanatory.
+- Document non-obvious invariants, edge cases, or Paper-specific gotchas.
+- Keep javadoc concise for public API; avoid redundant descriptions.

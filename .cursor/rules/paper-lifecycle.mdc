@@ -1,0 +1,12 @@
+---
+description: Plugin lifecycle management
+globs: **/*.java
+alwaysApply: false
+---
+
+# Plugin Lifecycle
+
+- Use **onLoad** only for very early setup.
+- Register listeners and commands in **onEnable**.
+- Cancel tasks, close resources, unregister listeners in **onDisable**.
+- **Do not rely on static plugin instances** unless already present.

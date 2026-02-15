@@ -1,0 +1,35 @@
+name: AbilityEngine
+version: 1.0.0-SNAPSHOT
+main: xyz.rishabhvenu.abilityengine.plugin.AbilityEnginePlugin
+api-version: '1.21'
+author: rishabhvenu
+description: A modular ability framework for Paper
+
+commands:
+  ability:
+    description: AbilityEngine commands
+    usage: /ability <give|reload|list|info>
+    permission: abilityengine.command
+
+permissions:
+  abilityengine.command:
+    description: Access to ability commands
+    default: op
+  abilityengine.command.give:
+    description: Give ability items to players
+    default: op
+  abilityengine.command.reload:
+    description: Reload ability configurations
+    default: op
+  abilityengine.command.list:
+    description: List all registered abilities
+    default: op
+  abilityengine.command.info:
+    description: View ability information
+    default: op
+  abilityengine.command.script:
+    description: Manage scripts
+    default: op
+  abilityengine.command.module:
+    description: View loaded modules
+    default: op

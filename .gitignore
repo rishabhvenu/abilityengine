@@ -1,0 +1,27 @@
+# Build outputs
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+build/
+target/
+out/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Gradle
+.gradle/
+
+# MkDocs
+mkdocs-site/site/
+mkdocs-site/.cache/

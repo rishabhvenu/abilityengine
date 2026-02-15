@@ -1,0 +1,19 @@
+---
+description: General architecture and change discipline for Paper plugin
+alwaysApply: true
+---
+
+# Paper Plugin - General Rules
+
+- Target **Paper 1.21.1+**, built with Gradle.
+- **Do not rewrite existing architecture** unless explicitly asked.
+- Make **minimal, localized changes**.
+- Match existing **package structure, naming, and style**.
+- **Never invent APIs or methods** that are not present in Paper 1.21.1 or this repository.
+- If unsure whether an API exists, **ask before using it**.
+
+# Communication
+
+- Explain reasoning behind changes.
+- Mention safer or more scalable alternatives when relevant.
+- Flag assumptions clearly.

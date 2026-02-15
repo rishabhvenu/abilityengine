@@ -1,0 +1,12 @@
+---
+description: Java 17+ language and style conventions
+globs: **/*.java
+alwaysApply: false
+---
+
+# Java & Language Level
+
+- Assume **Java 17+**.
+- Prefer **records** for simple immutable data carriers.
+- Prefer **final** fields and local variables.
+- **Avoid Lombok** unless already used in the project.

@@ -1,0 +1,113 @@
+site_name: AbilityEngine Documentation
+site_description: A modular Minecraft plugin framework for Paper 1.21+ with YAML, JavaScript, and Java API support
+site_author: rishabhvenu
+repo_url: https://github.com/yourusername/abilityengine
+edit_uri: ""
+
+theme:
+  name: material
+  palette:
+    # Light mode
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - admonition
+  - tables
+  - attr_list
+  - md_in_html
+  - def_list
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - tags
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quick-start.md
+  - Guides:
+      - YAML Abilities: guides/yaml-abilities.md
+      - JavaScript Scripting: guides/scripting.md
+      - Module Development: guides/module-development.md
+      - Sessions & Stateful Abilities: guides/sessions.md
+      - Ability Items: guides/items.md
+  - API Reference:
+      - Core Interfaces:
+          - Ability: reference/api/ability.md
+          - AbilityContext: reference/api/ability-context.md
+          - TriggerType: reference/api/trigger-type.md
+          - Condition & Conditions: reference/api/conditions.md
+          - CooldownManager: reference/api/cooldown-manager.md
+          - AbilityRegistry: reference/api/ability-registry.md
+          - AbilitySession: reference/api/ability-session.md
+          - AbilityItemService: reference/api/ability-item-service.md
+          - AbilityProvider: reference/api/ability-provider.md
+          - AbilityModule: reference/api/ability-module.md
+      - YAML Schema: reference/yaml-schema.md
+      - Action Types: reference/actions.md
+      - Scripting API: reference/scripting-api.md
+      - Trigger Reference: reference/trigger-reference.md
+      - Commands & Permissions: reference/commands.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Internals: architecture/internals.md
+  - Examples:
+      - YAML Examples: examples/yaml-examples.md
+      - Script Examples: examples/script-examples.md
+  - Help:
+      - FAQ: faq.md
+      - Troubleshooting: troubleshooting.md
+      - Best Practices: best-practices.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/yourusername/abilityengine

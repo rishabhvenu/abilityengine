@@ -1,0 +1,14 @@
+---
+description: Paper-specific API best practices
+globs: **/*.java
+alwaysApply: false
+---
+
+# Paper-Specific Best Practices
+
+- Prefer **Paper API** over Bukkit/Spigot where available.
+- Prefer **Brigadier commands** (Paper) over legacy command parsing.
+- Use **Adventure (Component)** for all player-facing messages.
+- Avoid deprecated APIs; if unavoidable, explain why.
+- Use **NamespacedKey** for persistent data.
+- Use modern events and APIs introduced in **1.20+** where relevant.

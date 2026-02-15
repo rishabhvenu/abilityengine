@@ -1,0 +1,15 @@
+---
+description: Threading and performance rules for Paper plugin
+globs: **/*.java
+alwaysApply: false
+---
+
+# Threading & Performance
+
+- **Never block the main server thread**.
+- No `Thread.sleep`, no blocking I/O, no database calls on the main thread.
+- Use Paper's scheduler correctly:
+  - **Main-thread logic** via `BukkitScheduler` / `GlobalRegionScheduler`.
+  - **Async work** only where Paper API explicitly allows it.
+- **Never call Bukkit/Paper APIs from async threads** unless documented as thread-safe.
+- Avoid allocations and expensive work inside hot events.

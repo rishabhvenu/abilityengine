@@ -1,0 +1,54 @@
+abilities:
+  fireball:
+    display-name: "&cFireball"
+    triggers:
+      - RIGHT_CLICK
+    conditions:
+      - sneaking: true
+    cooldown: 3s
+    actions:
+      - type: LAUNCH_PROJECTILE
+        projectile: FIREBALL
+        speed: 2.0
+      - type: SEND_MESSAGE
+        message: "&cFireball launched!"
+      - type: PLAY_SOUND
+        sound: ENTITY_BLAZE_SHOOT
+        volume: 1.0
+        pitch: 1.0
+
+  healing_touch:
+    display-name: "&aHealing Touch"
+    triggers:
+      - RIGHT_CLICK
+    conditions:
+      - health-below: 15.0
+    cooldown: 10s
+    actions:
+      - type: HEAL
+        amount: 5.0
+      - type: SEND_MESSAGE
+        message: "&aYou have been healed!"
+      - type: PLAY_EFFECT
+        particle: HEART
+        count: 10
+      - type: PLAY_SOUND
+        sound: ENTITY_PLAYER_LEVELUP
+
+  dash:
+    display-name: "&bDash"
+    triggers:
+      - SHIFT_RIGHT_CLICK
+    cooldown: 5s
+    actions:
+      - type: VELOCITY
+        x: 0.0
+        y: 0.5
+        z: 0.0
+      - type: TELEPORT
+        forward: 5.0
+      - type: PLAY_EFFECT
+        particle: CLOUD
+        count: 20
+      - type: SEND_MESSAGE
+        message: "&bDashed!"

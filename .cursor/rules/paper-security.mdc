@@ -1,0 +1,30 @@
+---
+description: Security practices for Paper plugin
+alwaysApply: true
+---
+
+# Input Validation & Sanitization
+
+- **Validate all external input**: commands, config, player input, file paths, URLs.
+- **Reject invalid input** with clear error messages; do not "fix" or guess.
+- **Sanitize file paths**: prevent path traversal (`..`, `/`, `\`); resolve to plugin data folder and validate within it.
+- **Validate ranges** (coordinates, counts, durations) before use; clamp or reject out-of-bounds values.
+
+# Injection & Abuse Prevention
+
+- **Never concatenate user input** into SQL, shell commands, or file paths; use parameterized queries or safe APIs.
+- **Rate limit** expensive or sensitive operations where abuse is possible.
+- **Validate permission checks** before performing restricted actions; never trust client state.
+- **Cap resource usage**: max list size, string length, batch size, etc.
+
+# Sensitive Data
+
+- **Do not log** passwords, tokens, API keys, or other secrets.
+- **Do not hardcode** secrets; use config or environment, and warn if missing.
+- **Validate config** for exposed secrets before logging config-related errors.
+
+# Permissions & Access Control
+
+- **Check permissions** before executing privileged operations; fail safely if missing.
+- **Never skip permission checks** for "convenience" or assumed operators.
+- Use consistent permission node naming (e.g. `plugin.action.target`).

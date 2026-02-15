@@ -1,0 +1,28 @@
+---
+description: Documentation as project context - read docs/, keep accurate, no fluff
+alwaysApply: true
+---
+
+# Documentation (`docs/`)
+
+## Context
+
+- **Read the `docs/` folder at the project root** for context before making changes.
+- This is the main place for project-specific context; use it when relevant to the task.
+
+## Keeping Docs Accurate
+
+- When you change behavior, APIs, config, or architecture, **update the docs** if the existing description is no longer accurate.
+- Do not leave docs out of sync with the code.
+
+## Editing Docs
+
+- **Edit `docs/` directly** when:
+  - Something documented there is wrong or outdated
+  - A change you make affects what should be documented
+  - New important context should be captured for future sessions
+
+## Content Standards
+
+- **No fluff** — only facts, behavior, and important context.
+- Omit filler, marketing copy, or obvious statements.

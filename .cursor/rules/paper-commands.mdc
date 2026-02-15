@@ -1,0 +1,12 @@
+---
+description: Command design and validation
+globs: **/*.java
+alwaysApply: false
+---
+
+# Commands
+
+- **Validate permissions early**.
+- **Never assume CommandSender is a Player**.
+- Use clear, user-friendly error messages (Adventure).
+- Avoid deeply nested command logic; **extract handlers**.

@@ -1,0 +1,23 @@
+---
+description: Safety, stability, and verification
+alwaysApply: true
+---
+
+# Safety & Stability
+
+- Assume **production servers with many players**.
+- **Fail safely** rather than crashing the server.
+- Validate all external input (commands, config, data files).
+
+# Compilation & Verification
+
+After writing or modifying code, verify:
+
+- `./gradlew build` succeeds
+- All imports exist in Paper 1.21.1
+- No missing dependencies
+- No unused variables or unchecked warnings
+
+For non-trivial changes, recommend: `./gradlew build`.
+
+If compilation is uncertain, say so clearly.

@@ -1,0 +1,12 @@
+---
+description: Gradle and dependency rules
+globs: build.gradle,build.gradle.kts,**/build.gradle,**/build.gradle.kts
+alwaysApply: false
+---
+
+# Gradle & Dependencies
+
+- **Do not modify build.gradle / build.gradle.kts** unless explicitly requested.
+- Assume Paper API is **compileOnly** (provided-scope equivalent).
+- **Never shade or relocate** Paper/Bukkit APIs.
+- Ensure all code compiles under the existing Gradle configuration.
