@@ -1,7 +1,7 @@
 site_name: AbilityEngine Documentation
 site_description: A modular Minecraft plugin framework for Paper 1.21+ with YAML, JavaScript, and Java API support
 site_author: rishabhvenu
-site_url: https://rishabhvenu.xyz/abilityengine/
+site_url: https://abilityengine.netlify.app/
 repo_url: https://github.com/rishabhvenu/abilityengine
 edit_uri: ""
 

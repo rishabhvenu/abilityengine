@@ -1,0 +1,22 @@
+[build]
+  base = "mkdocs-site"
+  command = "pip install -r requirements.txt && mkdocs build"
+  publish = "site"
+
+[build.environment]
+  PYTHON_VERSION = "3.11"
+
+# Deploy previews for PRs
+[context.deploy-preview]
+  command = "pip install -r requirements.txt && mkdocs build"
+
+# Branch deploys (optional, for non-master branches)
+[context.branch-deploy]
+  command = "pip install -r requirements.txt && mkdocs build"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
