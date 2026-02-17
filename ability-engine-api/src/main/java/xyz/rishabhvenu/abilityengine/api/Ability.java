@@ -43,4 +43,13 @@ public interface Ability {
      * @return Cooldown duration, or Duration.ZERO for no cooldown
      */
     Duration cooldown();
+    
+    /**
+     * Returns the permission required to use this ability.
+     * 
+     * @return Permission node, or null if no permission required
+     */
+    default String permission() {
+        return null;
+    }
 }

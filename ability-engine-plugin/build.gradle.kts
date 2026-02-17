@@ -15,11 +15,14 @@ tasks {
         archiveClassifier.set("")
         archiveBaseName.set("AbilityEngine")
         
+        // Merge META-INF/services files so GraalVM's ServiceLoader discovery works
+        mergeServiceFiles()
+        
         // Relocate SnakeYAML to avoid conflicts with Paper's bundled version
         relocate("org.yaml.snakeyaml", "xyz.rishabhvenu.abilityengine.libs.snakeyaml")
         
-        // Relocate GraalVM to avoid conflicts with other plugins
-        relocate("org.graalvm", "xyz.rishabhvenu.abilityengine.libs.graalvm")
+        // GraalVM must NOT be relocated — it uses ServiceLoader/module system
+        // for language discovery, which breaks when packages are renamed
     }
     
     build {

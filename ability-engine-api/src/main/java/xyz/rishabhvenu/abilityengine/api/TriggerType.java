@@ -25,7 +25,26 @@ public enum TriggerType {
     
     // Movement triggers
     MOVE,
+    JUMP,
+    LAND,
+    
+    // Advanced triggers
+    DOUBLE_SHIFT,
+    HOLD_SHIFT,
+    
+    // Projectile triggers
+    PROJECTILE_HIT,
+    
+    // Combat triggers (extended)
+    KILL_ENTITY,
+    
+    // Lifecycle triggers
+    ON_JOIN,
+    ON_QUIT,
     
     // Tick-based trigger (fires every tick for active sessions)
-    TICK
+    TICK,
+    
+    // Custom event trigger
+    CUSTOM
 }

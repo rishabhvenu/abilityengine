@@ -28,6 +28,8 @@ public final class AbilityEnginePlugin extends JavaPlugin {
     private SessionManager sessionManager;
     private TriggerDispatcher triggerDispatcher;
     private EventTriggerRegistry eventTriggerRegistry;
+    private AbilityStateStore stateStore;
+    private BossBarManager bossBarManager;
     private ConfigAbilityLoader configLoader;
     private ModuleLoader moduleLoader;
     private ScriptEngine scriptEngine;
@@ -41,6 +43,8 @@ public final class AbilityEnginePlugin extends JavaPlugin {
         cooldownManager = new CooldownManagerImpl();
         itemService = new AbilityItemServiceImpl(this, registry);
         sessionManager = new SessionManager(this);
+        stateStore = new AbilityStateStore();
+        bossBarManager = new BossBarManager();
         triggerDispatcher = new TriggerDispatcher(this, registry, itemService, cooldownManager);
         eventTriggerRegistry = new EventTriggerRegistry(this);
         configLoader = new ConfigAbilityLoader(getLogger(), registry);
@@ -51,6 +55,21 @@ public final class AbilityEnginePlugin extends JavaPlugin {
         // Register event listeners
         Bukkit.getPluginManager().registerEvents(triggerDispatcher, this);
         Bukkit.getPluginManager().registerEvents(eventTriggerRegistry, this);
+        Bukkit.getPluginManager().registerEvents(sessionManager, this);
+        
+        // Register cleanup listener for player quit
+        Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
+            @org.bukkit.event.EventHandler
+            public void onPlayerQuit(org.bukkit.event.player.PlayerQuitEvent event) {
+                java.util.UUID playerId = event.getPlayer().getUniqueId();
+                // Clear player state
+                stateStore.clearPlayer(playerId);
+                // Clear cooldowns
+                cooldownManager.clearCooldowns(playerId);
+                // Clear boss bars
+                bossBarManager.removeAllBars(playerId);
+            }
+        }, this);
         
         // Load config abilities
         File abilitiesDir = new File(getDataFolder(), "abilities");
@@ -64,7 +83,7 @@ public final class AbilityEnginePlugin extends JavaPlugin {
         getLogger().info("Loaded " + modulesLoaded + " external module(s)");
         
         // Load scripts
-        scriptEngine = new ScriptEngine(this, registry, cooldownManager, itemService, sessionManager, eventTriggerRegistry);
+        scriptEngine = new ScriptEngine(this, registry, cooldownManager, itemService, sessionManager, eventTriggerRegistry, stateStore, bossBarManager);
         File scriptsDir = new File(getDataFolder(), "scripts");
         int scriptsLoaded = scriptEngine.loadAllScripts(scriptsDir);
         getLogger().info("Loaded " + scriptsLoaded + " script(s)");
@@ -130,5 +149,9 @@ public final class AbilityEnginePlugin extends JavaPlugin {
     
     public ModuleLoader getModuleLoader() {
         return moduleLoader;
+    }
+    
+    public AbilityStateStore getStateStore() {
+        return stateStore;
     }
 }

@@ -10,6 +10,8 @@ import org.graalvm.polyglot.Source;
 import xyz.rishabhvenu.abilityengine.api.AbilityItemService;
 import xyz.rishabhvenu.abilityengine.api.AbilityRegistry;
 import xyz.rishabhvenu.abilityengine.api.CooldownManager;
+import xyz.rishabhvenu.abilityengine.core.AbilityStateStore;
+import xyz.rishabhvenu.abilityengine.core.BossBarManager;
 import xyz.rishabhvenu.abilityengine.core.EventTriggerRegistry;
 import xyz.rishabhvenu.abilityengine.core.SessionManager;
 
@@ -33,6 +35,8 @@ public final class ScriptEngine {
     private final AbilityItemService itemService;
     private final SessionManager sessionManager;
     private final EventTriggerRegistry eventTriggerRegistry;
+    private final AbilityStateStore stateStore;
+    private final BossBarManager bossBarManager;
     
     private Engine graalEngine;
     private final Map<String, ScriptContext> loadedScripts = new HashMap<>();
@@ -43,7 +47,9 @@ public final class ScriptEngine {
             CooldownManager cooldownManager,
             AbilityItemService itemService,
             SessionManager sessionManager,
-            EventTriggerRegistry eventTriggerRegistry) {
+            EventTriggerRegistry eventTriggerRegistry,
+            AbilityStateStore stateStore,
+            BossBarManager bossBarManager) {
         this.plugin = plugin;
         this.logger = plugin.getLogger();
         this.registry = registry;
@@ -51,6 +57,14 @@ public final class ScriptEngine {
         this.itemService = itemService;
         this.sessionManager = sessionManager;
         this.eventTriggerRegistry = eventTriggerRegistry;
+        this.stateStore = stateStore;
+        this.bossBarManager = bossBarManager;
+        
+        // Initialize GraalVM engine eagerly so reload commands work
+        // even when no scripts existed at startup
+        this.graalEngine = Engine.newBuilder()
+            .option("engine.WarnInterpreterOnly", "false")
+            .build();
     }
     
     /**
@@ -131,6 +145,8 @@ public final class ScriptEngine {
             itemService,
             sessionManager,
             eventTriggerRegistry,
+            stateStore,
+            bossBarManager,
             scriptContext
         );
         
@@ -158,9 +174,10 @@ public final class ScriptEngine {
             return;
         }
         
-        // Unregister all abilities
+        // Unregister all abilities and clear their state
         for (String abilityId : scriptContext.getAbilityIds()) {
             registry.unregister(abilityId);
+            stateStore.clearAbility(abilityId);
         }
         
         // Cancel all scheduled tasks

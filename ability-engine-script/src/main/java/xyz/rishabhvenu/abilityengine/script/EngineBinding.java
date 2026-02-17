@@ -10,6 +10,8 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.RegisteredListener;
 import org.graalvm.polyglot.Value;
 import xyz.rishabhvenu.abilityengine.api.*;
+import xyz.rishabhvenu.abilityengine.core.AbilityStateStore;
+import xyz.rishabhvenu.abilityengine.core.BossBarManager;
 import xyz.rishabhvenu.abilityengine.core.EventTriggerRegistry;
 import xyz.rishabhvenu.abilityengine.core.SessionManager;
 
@@ -30,6 +32,8 @@ public final class EngineBinding {
     private final AbilityItemService itemService;
     private final SessionManager sessionManager;
     private final EventTriggerRegistry eventTriggerRegistry;
+    private final AbilityStateStore stateStore;
+    private final BossBarManager bossBarManager;
     private final ScriptContext scriptContext;
     
     // Sub-APIs
@@ -38,6 +42,11 @@ public final class EngineBinding {
     public final SessionBindings sessions;
     public final CooldownBindings cooldowns;
     public final ItemBindings items;
+    public final StateBindings state;
+    public final UIBindings ui;
+    public final EffectsBindings effects;
+    public final ProjectileBindings projectile;
+    public final AreaEffectBindings areaEffect;
     
     public EngineBinding(
             Plugin plugin,
@@ -46,6 +55,8 @@ public final class EngineBinding {
             AbilityItemService itemService,
             SessionManager sessionManager,
             EventTriggerRegistry eventTriggerRegistry,
+            AbilityStateStore stateStore,
+            BossBarManager bossBarManager,
             ScriptContext scriptContext) {
         this.plugin = plugin;
         this.registry = registry;
@@ -53,11 +64,95 @@ public final class EngineBinding {
         this.itemService = itemService;
         this.sessionManager = sessionManager;
         this.eventTriggerRegistry = eventTriggerRegistry;
+        this.stateStore = stateStore;
+        this.bossBarManager = bossBarManager;
         this.scriptContext = scriptContext;
         
         this.sessions = new SessionBindings(sessionManager);
         this.cooldowns = new CooldownBindings(cooldownManager);
-        this.items = new ItemBindings(itemService);
+        this.items = new ItemBindings(itemService, registry, plugin, scriptContext);
+        this.state = new StateBindings(stateStore);
+        this.ui = new UIBindings(bossBarManager, plugin);
+        this.effects = new EffectsBindings();
+        this.projectile = new ProjectileBindings(plugin, scriptContext);
+        this.areaEffect = new AreaEffectBindings(plugin);
+    }
+    
+    /**
+     * Creates and registers a named item template with auto-wired abilities.
+     */
+    public void item(Value config) {
+        if (!config.hasMembers()) {
+            throw new IllegalArgumentException("item() requires a config object");
+        }
+        
+        String itemId = config.getMember("id").asString();
+        if (itemId == null || itemId.isBlank()) {
+            throw new IllegalArgumentException("Item must have an id");
+        }
+        
+        // Extract abilities array
+        if (!config.hasMember("abilities")) {
+            throw new IllegalArgumentException("Item must have an abilities array");
+        }
+        
+        Value abilitiesValue = config.getMember("abilities");
+        if (!abilitiesValue.hasArrayElements()) {
+            throw new IllegalArgumentException("abilities must be an array");
+        }
+        
+        // Build enriched abilities array with trigger info from registry
+        com.google.gson.JsonArray enrichedAbilities = new com.google.gson.JsonArray();
+        long size = abilitiesValue.getArraySize();
+        
+        for (long i = 0; i < size; i++) {
+            String abilityId = abilitiesValue.getArrayElement(i).asString();
+            Ability ability = registry.get(abilityId);
+            
+            if (ability == null) {
+                warn("Item " + itemId + " references unknown ability: " + abilityId);
+                continue;
+            }
+            
+            // Get primary trigger from ability
+            Collection<TriggerType> triggers = ability.triggers();
+            String primaryTrigger = triggers.isEmpty() ? "RIGHT_CLICK" : triggers.iterator().next().name();
+            
+            com.google.gson.JsonObject entry = new com.google.gson.JsonObject();
+            entry.addProperty("id", abilityId);
+            entry.addProperty("trigger", primaryTrigger);
+            enrichedAbilities.add(entry);
+        }
+        
+        // Create modified config with enriched abilities
+        org.graalvm.polyglot.Context polyglotCtx = scriptContext.getGraalContext();
+        Value modifiedConfig = polyglotCtx.eval("js", "({})");
+        
+        // Copy all fields from original config
+        for (String key : config.getMemberKeys()) {
+            if (!key.equals("abilities")) {
+                modifiedConfig.putMember(key, config.getMember(key));
+            }
+        }
+        
+        // Add enriched abilities as array of objects
+        Value abilitiesArray = polyglotCtx.eval("js", "[]");
+        for (int i = 0; i < enrichedAbilities.size(); i++) {
+            com.google.gson.JsonObject entry = enrichedAbilities.get(i).getAsJsonObject();
+            Value abilityObj = polyglotCtx.eval("js", "({})");
+            abilityObj.putMember("id", entry.get("id").getAsString());
+            abilityObj.putMember("trigger", entry.get("trigger").getAsString());
+            abilitiesArray.setArrayElement(i, abilityObj);
+        }
+        modifiedConfig.putMember("abilities", abilitiesArray);
+        
+        // Create the item using the extended item builder
+        ItemStack template = items.create(modifiedConfig);
+        
+        // Store template in script context
+        scriptContext.registerItemTemplate(itemId, template);
+        
+        log("Registered item template: " + itemId);
     }
     
     /**
@@ -76,31 +171,105 @@ public final class EngineBinding {
             throw new IllegalArgumentException("Ability must have an id");
         }
         
-        // Extract triggers
+        // Extract triggers (or single trigger)
         Value triggersValue = config.getMember("triggers");
+        
+        // Support singular "trigger" as alias
+        if ((triggersValue == null || triggersValue.isNull()) && config.hasMember("trigger")) {
+            Value singleTrigger = config.getMember("trigger");
+            if (singleTrigger.isString()) {
+                // Wrap in array handling
+                triggersValue = singleTrigger;
+            }
+        }
+        
         Collection<TriggerType> triggers = parseTriggers(triggersValue);
         
         // Extract conditions
         Value conditionsValue = config.getMember("conditions");
         List<Condition> conditions = parseConditions(conditionsValue);
         
-        // Extract cooldown (in seconds)
+        // Extract cooldown (in seconds or as object)
         Value cooldownValue = config.getMember("cooldown");
         Duration cooldown = Duration.ZERO;
+        boolean showBossBar = false;
+        String bossBarColor = "GREEN";
+        String bossBarLabel = null;
+        
         if (cooldownValue != null && !cooldownValue.isNull()) {
             if (cooldownValue.isNumber()) {
+                // Simple form: cooldown: 5
                 cooldown = Duration.ofSeconds(cooldownValue.asLong());
+            } else if (cooldownValue.hasMembers()) {
+                // Extended form: cooldown: { seconds: 5, showBossBar: true, ... }
+                Value secondsVal = cooldownValue.getMember("seconds");
+                if (secondsVal != null && secondsVal.isNumber()) {
+                    cooldown = Duration.ofSeconds(secondsVal.asLong());
+                }
+                
+                Value showBarVal = cooldownValue.getMember("showBossBar");
+                if (showBarVal != null && showBarVal.isBoolean()) {
+                    showBossBar = showBarVal.asBoolean();
+                }
+                
+                Value colorVal = cooldownValue.getMember("bossBarColor");
+                if (colorVal != null && colorVal.isString()) {
+                    bossBarColor = colorVal.asString();
+                }
+                
+                Value labelVal = cooldownValue.getMember("bossBarLabel");
+                if (labelVal != null && labelVal.isString()) {
+                    bossBarLabel = labelVal.asString();
+                }
             }
         }
         
-        // Extract execute function
-        Value executeFunc = config.getMember("execute");
-        if (executeFunc == null || !executeFunc.canExecute()) {
-            throw new IllegalArgumentException("Ability must have an execute function");
+        // Extract permission
+        Value permissionValue = config.getMember("permission");
+        String permission = null;
+        if (permissionValue != null && !permissionValue.isNull() && permissionValue.isString()) {
+            permission = permissionValue.asString();
         }
         
+        // Extract execution function - support onTrigger alias
+        Value executeFunc = config.getMember("execute");
+        Value onTriggerFunc = config.getMember("onTrigger");
+        
+        // onTrigger takes priority, execute is fallback for backward compat
+        Value primaryFunc = (onTriggerFunc != null && onTriggerFunc.canExecute()) 
+            ? onTriggerFunc 
+            : executeFunc;
+            
+        if (primaryFunc == null || !primaryFunc.canExecute()) {
+            throw new IllegalArgumentException("Ability must have an execute or onTrigger function");
+        }
+        
+        // Extract lifecycle hooks
+        Value onProjectileHit = config.hasMember("onProjectileHit") ? config.getMember("onProjectileHit") : null;
+        Value onProjectileTick = config.hasMember("onProjectileTick") ? config.getMember("onProjectileTick") : null;
+        Value onExpire = config.hasMember("onExpire") ? config.getMember("onExpire") : null;
+        Value onCancel = config.hasMember("onCancel") ? config.getMember("onCancel") : null;
+        
         // Create and register the ability
-        ScriptAbility ability = new ScriptAbility(id, triggers, conditions, cooldown, executeFunc);
+        ScriptAbility ability = new ScriptAbility(
+            id, 
+            triggers, 
+            conditions, 
+            cooldown,
+            permission,
+            showBossBar,
+            bossBarColor,
+            bossBarLabel != null ? bossBarLabel : id,
+            primaryFunc,
+            onProjectileHit,
+            onProjectileTick,
+            onExpire,
+            onCancel,
+            scriptContext,
+            stateStore,
+            plugin,
+            bossBarManager
+        );
         registry.register(ability);
         scriptContext.trackAbility(id);
         
@@ -244,6 +413,17 @@ public final class EngineBinding {
             return triggers;
         }
         
+        // Support single string value
+        if (triggersValue.isString()) {
+            String triggerName = triggersValue.asString();
+            try {
+                triggers.add(TriggerType.valueOf(triggerName.toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                warn("Unknown trigger type: " + triggerName);
+            }
+            return triggers.isEmpty() ? List.of(TriggerType.RIGHT_CLICK) : triggers;
+        }
+        
         if (triggersValue.hasArrayElements()) {
             long size = triggersValue.getArraySize();
             for (long i = 0; i < size; i++) {
@@ -351,13 +531,143 @@ public final class EngineBinding {
     
     public static final class ItemBindings {
         private final AbilityItemService itemService;
+        private final AbilityRegistry registry;
+        private final Plugin plugin;
+        private final ScriptContext scriptContext;
         
-        ItemBindings(AbilityItemService itemService) {
+        ItemBindings(AbilityItemService itemService, AbilityRegistry registry, Plugin plugin, ScriptContext scriptContext) {
             this.itemService = itemService;
+            this.registry = registry;
+            this.plugin = plugin;
+            this.scriptContext = scriptContext;
         }
         
+        /**
+         * Creates an ability item (simple string form).
+         */
         public ItemStack create(String abilityId) {
             return itemService.createAbilityItem(abilityId);
+        }
+        
+        /**
+         * Creates an ability item from a rich config object.
+         */
+        public ItemStack create(Value config) {
+            if (config.isString()) {
+                // String form - delegate to simple create
+                return create(config.asString());
+            }
+            
+            if (!config.hasMembers()) {
+                throw new IllegalArgumentException("create() requires a string or config object");
+            }
+            
+            // Parse material type
+            String typeStr = getString(config, "type", "STICK");
+            org.bukkit.Material material;
+            try {
+                material = org.bukkit.Material.valueOf(typeStr.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                material = org.bukkit.Material.STICK;
+            }
+            
+            ItemStack item = new ItemStack(material);
+            org.bukkit.inventory.meta.ItemMeta meta = item.getItemMeta();
+            if (meta == null) {
+                return item;
+            }
+            
+            // Parse display name with & color codes
+            String name = getString(config, "name", null);
+            if (name != null) {
+                meta.displayName(parseColoredText(name));
+            }
+            
+            // Parse lore with & color codes
+            if (config.hasMember("lore")) {
+                Value loreValue = config.getMember("lore");
+                if (loreValue.hasArrayElements()) {
+                    java.util.List<net.kyori.adventure.text.Component> loreComponents = new java.util.ArrayList<>();
+                    long size = loreValue.getArraySize();
+                    for (long i = 0; i < size; i++) {
+                        String line = loreValue.getArrayElement(i).asString();
+                        loreComponents.add(parseColoredText(line));
+                    }
+                    meta.lore(loreComponents);
+                }
+            }
+            
+            // Set unbreakable
+            if (getBool(config, "unbreakable", false)) {
+                meta.setUnbreakable(true);
+            }
+            
+            // Apply enchantments
+            if (config.hasMember("enchantments")) {
+                Value enchants = config.getMember("enchantments");
+                if (enchants.hasMembers()) {
+                    for (String enchantKey : enchants.getMemberKeys()) {
+                        try {
+                            org.bukkit.enchantments.Enchantment ench = 
+                                org.bukkit.enchantments.Enchantment.getByName(enchantKey.toUpperCase());
+                            if (ench != null) {
+                                int level = enchants.getMember(enchantKey).asInt();
+                                meta.addEnchant(ench, level, true);
+                            }
+                        } catch (Exception e) {
+                            // Skip invalid enchantments
+                        }
+                    }
+                }
+            }
+            
+            // Set PDC data
+            org.bukkit.persistence.PersistentDataContainer pdc = meta.getPersistentDataContainer();
+            org.bukkit.NamespacedKey abilityIdKey = new org.bukkit.NamespacedKey(plugin, "ability_id");
+            org.bukkit.NamespacedKey abilitiesKey = new org.bukkit.NamespacedKey(plugin, "abilities");
+            org.bukkit.NamespacedKey versionKey = new org.bukkit.NamespacedKey(plugin, "item_version");
+            
+            // Handle abilities array
+            if (config.hasMember("abilities")) {
+                Value abilitiesValue = config.getMember("abilities");
+                if (abilitiesValue.hasArrayElements()) {
+                    com.google.gson.JsonArray abilitiesArray = new com.google.gson.JsonArray();
+                    long size = abilitiesValue.getArraySize();
+                    String primaryAbilityId = null;
+                    
+                    for (long i = 0; i < size; i++) {
+                        Value abilityEntry = abilitiesValue.getArrayElement(i);
+                        if (abilityEntry.hasMembers()) {
+                            String abilityId = abilityEntry.getMember("id").asString();
+                            String trigger = abilityEntry.getMember("trigger").asString();
+                            
+                            com.google.gson.JsonObject entry = new com.google.gson.JsonObject();
+                            entry.addProperty("id", abilityId);
+                            entry.addProperty("trigger", trigger.toUpperCase());
+                            abilitiesArray.add(entry);
+                            
+                            if (primaryAbilityId == null) {
+                                primaryAbilityId = abilityId;
+                            }
+                        }
+                    }
+                    
+                    if (primaryAbilityId != null) {
+                        pdc.set(abilityIdKey, org.bukkit.persistence.PersistentDataType.STRING, primaryAbilityId);
+                    }
+                    pdc.set(abilitiesKey, org.bukkit.persistence.PersistentDataType.STRING, 
+                            new com.google.gson.Gson().toJson(abilitiesArray));
+                    pdc.set(versionKey, org.bukkit.persistence.PersistentDataType.INTEGER, 1);
+                }
+            } else if (config.hasMember("abilityId")) {
+                // Single ability form
+                String abilityId = config.getMember("abilityId").asString();
+                pdc.set(abilityIdKey, org.bukkit.persistence.PersistentDataType.STRING, abilityId);
+                pdc.set(versionKey, org.bukkit.persistence.PersistentDataType.INTEGER, 1);
+            }
+            
+            item.setItemMeta(meta);
+            return item;
         }
         
         public boolean isAbilityItem(ItemStack item) {
@@ -366,6 +676,44 @@ public final class EngineBinding {
         
         public String getAbilityId(ItemStack item) {
             return itemService.getAbilityId(item);
+        }
+        
+        /**
+         * Gives an item to a player. Supports both ability IDs and item template IDs.
+         */
+        public void give(org.bukkit.entity.Player player, String itemIdOrAbilityId) {
+            ItemStack item = null;
+            
+            // First try to find an item template
+            ItemStack template = scriptContext.getItemTemplate(itemIdOrAbilityId);
+            if (template != null) {
+                item = template.clone();
+            } else {
+                // Fall back to creating ability item directly
+                item = create(itemIdOrAbilityId);
+            }
+            
+            if (item != null) {
+                player.getInventory().addItem(item);
+            }
+        }
+        
+        private String getString(Value config, String key, String defaultValue) {
+            if (!config.hasMember(key)) return defaultValue;
+            Value v = config.getMember(key);
+            return v.isString() ? v.asString() : defaultValue;
+        }
+        
+        private boolean getBool(Value config, String key, boolean defaultValue) {
+            if (!config.hasMember(key)) return defaultValue;
+            Value v = config.getMember(key);
+            return v.isBoolean() ? v.asBoolean() : defaultValue;
+        }
+        
+        private net.kyori.adventure.text.Component parseColoredText(String text) {
+            return net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
+                .legacyAmpersand()
+                .deserialize(text);
         }
     }
 }
