@@ -921,6 +921,236 @@ Logs error message.
 
 ---
 
+## Phase API (Phase 3)
+
+### Defining Phases
+
+Abilities can use a state machine with multiple phases:
+
+```javascript
+engine.ability({
+  id: "channeled",
+  phases: {
+    charge: {
+      duration: 20,              // Optional: auto-transition after N ticks
+      onStart(ctx, phase) {},    // Called once on phase start
+      onTick(ctx, phase) {},     // Called every tick
+      endWhen(ctx, phase) {},    // Optional: return true to transition
+      next: "release"            // Next phase name
+    },
+    release: {
+      onStart(ctx, phase) {},
+      onEnd(ctx, phase) {}       // Called when leaving this phase
+    }
+  }
+});
+```
+
+**Phase Context (`phase`):**
+- `phase.name` - Current phase name
+- `phase.tick` - Tick counter for current phase
+- `phase.get(key)` - Get phase-scoped state
+- `phase.set(key, value)` - Set phase-scoped state
+
+**Execution Context:**
+- `ctx.phase()` - Returns current PhaseInstance (or null)
+
+Phases automatically transition when:
+- `duration` ticks elapsed
+- `endWhen()` returns true
+- Ability is interrupted
+
+---
+
+## Raycast API (Phase 3)
+
+### engine.raycast(config)
+
+Performs synchronous raycasting with block and entity detection.
+
+```javascript
+var result = engine.raycast({
+  origin: player.getEyeLocation(),
+  direction: player.getLocation().getDirection(),
+  maxDistance: 50,
+  detect: ["BLOCK", "ENTITY"],  // What to detect
+  entityRadius: 1.5,              // Entity detection radius
+  
+  // Callbacks (optional)
+  onHitBlock(hit) {
+    // hit.type === "BLOCK"
+    // hit.location, hit.block
+  },
+  onHitEntity(hit) {
+    // hit.type === "ENTITY"
+    // hit.location, hit.entity
+  },
+  onMiss(endLocation) {
+    // No hit detected
+  }
+});
+
+// Returns: { type: "BLOCK"|"ENTITY"|"MISS", location, entity, block }
+```
+
+**Notes:**
+- Must be called from main thread
+- Entity detection uses stepping algorithm (checks every 0.5 blocks)
+- If entity closer than block, entity wins
+
+---
+
+## Movement API (Phase 3)
+
+### engine.movement.pull(config, execution)
+
+Pulls entity toward target with physics-safe velocity:
+
+```javascript
+engine.movement.pull({
+  entity: player,
+  target: targetLocation,
+  speed: 1.2,
+  drag: 0.7,                    // Collision drag multiplier
+  minSpeed: 0.15,               // Stop if speed drops below
+  arrivalDistance: 1.5,         // Stop when within distance
+  maxTicks: 80,                 // Maximum duration
+  
+  onArrival() {},               // Called on successful arrival
+  onInterrupt() {}              // Called if cancelled
+}, ctx.execution());
+```
+
+### engine.movement.dash(config, execution)
+
+Quick directional dash:
+
+```javascript
+engine.movement.dash({
+  entity: player,
+  direction: player.getLocation().getDirection(),
+  power: 2.0,
+  duration: 10                  // Optional: sustained push
+}, ctx.execution());
+```
+
+### engine.movement.launch(config)
+
+Single velocity impulse:
+
+```javascript
+engine.movement.launch({
+  entity: target,
+  direction: new Vector(0, 1, 0.5),
+  power: 1.5
+});
+```
+
+**Notes:**
+- All movement tasks tracked on execution instance
+- Auto-cancelled on ability interrupt
+- Resets fall distance automatically
+
+---
+
+## Control API (Phase 3)
+
+### engine.control.freeze(entity, config, execution)
+
+Freezes entity movement:
+
+```javascript
+engine.control.freeze(target, {
+  duration: 60,                 // Ticks (0 = permanent)
+  preventMovement: true,
+  preventRotation: false        // Not yet implemented
+}, ctx.execution());
+```
+
+### engine.control.unfreeze(entity, execution)
+
+Unfreezes entity:
+
+```javascript
+engine.control.unfreeze(target, ctx.execution());
+```
+
+### engine.control.isFrozen(entity)
+
+Checks freeze status:
+
+```javascript
+if (engine.control.isFrozen(target)) {
+  // ...
+}
+```
+
+**Notes:**
+- Frozen entities have velocity zeroed every tick
+- Auto-unfreezes on death, quit, or duration
+- All frozen entities tracked on execution instance
+
+---
+
+## Cooldown Override (Phase 3)
+
+### ctx.overrideCooldown(seconds)
+
+Sets new cooldown duration:
+
+```javascript
+ctx.overrideCooldown(5); // Set to 5 seconds
+```
+
+### ctx.shortenCooldown(percent)
+
+Reduces remaining cooldown by percentage:
+
+```javascript
+ctx.shortenCooldown(50); // Reduce by 50%
+```
+
+**Notes:**
+- Both methods sync with boss bar UI automatically
+- Useful for dynamic cooldowns based on conditions
+- Works with or without boss bar display
+
+---
+
+## Interrupt System (Phase 3)
+
+### Defining Interrupts
+
+Abilities can be cancelled by external events:
+
+```javascript
+engine.ability({
+  id: "channeled",
+  interrupts: ["TAKE_DAMAGE", "SWITCH_ITEM", "DEATH", "QUIT"],
+  
+  onInterrupt(ctx) {
+    ctx.player().sendMessage("§cInterrupted!");
+    ctx.shortenCooldown(50); // Optional: reduce cooldown penalty
+  }
+});
+```
+
+**Available Interrupt Types:**
+- `TAKE_DAMAGE` - Player takes damage
+- `SWITCH_ITEM` - Player changes held item slot
+- `DEATH` - Player dies
+- `QUIT` - Player leaves server
+
+**Automatic Cleanup:**
+
+When interrupted, execution instance automatically:
+- Cancels all owned tasks (phases, movement)
+- Unfreezes all owned entities
+- Calls `onInterrupt()` callback
+- Unregisters from tracker
+
+---
+
 ## Java Interop
 
 Access Java classes via `Java.type()`:

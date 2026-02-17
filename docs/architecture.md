@@ -304,3 +304,109 @@ flowchart TD
 
 All three can coexist. Abilities from all sources are registered in the same registry.
 
+## Phase 3 (Implemented)
+
+Phase 3 adds six major runtime features for scripting:
+
+### 1. Phase / State Machine API
+
+Abilities can define multiple phases with lifecycle hooks:
+
+```javascript
+engine.ability({
+  id: "example",
+  phases: {
+    charge: {
+      duration: 20,
+      onStart(ctx, phase) {},
+      onTick(ctx, phase) {},
+      endWhen(ctx, phase) { return false; },
+      next: "release"
+    },
+    release: {
+      onStart(ctx, phase) {},
+      onEnd(ctx, phase) {}
+    }
+  }
+});
+```
+
+- Each phase has tick counter, state storage (`phase.get/set`)
+- Automatic transitions via `duration` or `endWhen()`
+- `ctx.phase()` returns current phase instance
+
+### 2. Raycast Utility
+
+Synchronous raycasting with block and entity detection:
+
+```javascript
+engine.raycast({
+  origin, direction, maxDistance,
+  detect: ["BLOCK", "ENTITY"],
+  entityRadius: 1.5,
+  onHitBlock(hit) {},
+  onHitEntity(hit) {},
+  onMiss(endLocation) {}
+});
+```
+
+Entity detection uses stepping algorithm to check along ray path.
+
+### 3. Movement Module
+
+Physics-safe entity movement with collision drag:
+
+- `engine.movement.pull({entity, target, speed, drag, onArrival})`
+- `engine.movement.dash({entity, direction, power})`
+- `engine.movement.launch({entity, direction, power})`
+
+All movement tasks tracked on execution instance for auto-cleanup.
+
+### 4. Entity Control API
+
+Freeze entities with movement suppression:
+
+```javascript
+engine.control.freeze(entity, {
+  duration: 60,
+  preventMovement: true,
+  preventRotation: false
+}, ctx.execution());
+```
+
+EntityControlManager intercepts movement events and zeros velocity. Auto-unfreezes on death/quit/duration.
+
+### 5. Cooldown Override API
+
+Dynamic cooldown modification:
+
+- `ctx.overrideCooldown(seconds)` - Set new cooldown
+- `ctx.shortenCooldown(percent)` - Reduce by percentage
+
+Both sync with boss bar UI automatically.
+
+### 6. Interrupt System
+
+Abilities can be interrupted by events:
+
+```javascript
+engine.ability({
+  id: "channeled",
+  interrupts: ["TAKE_DAMAGE", "SWITCH_ITEM", "DEATH", "QUIT"],
+  onInterrupt(ctx) {
+    // Cleanup logic
+  }
+});
+```
+
+InterruptManager listens for events and cancels matching executions. All execution-owned resources (tasks, frozen entities, phases) auto-cleanup.
+
+### Execution Instance Architecture
+
+Each `execute()` invocation creates an `AbilityExecutionInstance` that owns:
+- Scheduled tasks (phases, movement)
+- Frozen entities
+- Phase state
+
+On interrupt or completion, all resources are automatically cleaned up.
+

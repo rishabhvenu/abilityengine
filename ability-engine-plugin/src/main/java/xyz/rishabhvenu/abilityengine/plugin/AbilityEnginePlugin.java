@@ -33,6 +33,9 @@ public final class AbilityEnginePlugin extends JavaPlugin {
     private ConfigAbilityLoader configLoader;
     private ModuleLoader moduleLoader;
     private ScriptEngine scriptEngine;
+    private ExecutionTracker executionTracker;
+    private EntityControlManager entityControlManager;
+    private InterruptManager interruptManager;
     
     @Override
     public void onEnable() {
@@ -45,6 +48,9 @@ public final class AbilityEnginePlugin extends JavaPlugin {
         sessionManager = new SessionManager(this);
         stateStore = new AbilityStateStore();
         bossBarManager = new BossBarManager();
+        executionTracker = new ExecutionTracker();
+        entityControlManager = new EntityControlManager(this);
+        interruptManager = new InterruptManager(executionTracker);
         triggerDispatcher = new TriggerDispatcher(this, registry, itemService, cooldownManager);
         eventTriggerRegistry = new EventTriggerRegistry(this);
         configLoader = new ConfigAbilityLoader(getLogger(), registry);
@@ -52,10 +58,15 @@ public final class AbilityEnginePlugin extends JavaPlugin {
         // Start session manager
         sessionManager.start();
         
+        // Start entity control manager
+        entityControlManager.start();
+        
         // Register event listeners
         Bukkit.getPluginManager().registerEvents(triggerDispatcher, this);
         Bukkit.getPluginManager().registerEvents(eventTriggerRegistry, this);
         Bukkit.getPluginManager().registerEvents(sessionManager, this);
+        Bukkit.getPluginManager().registerEvents(entityControlManager, this);
+        Bukkit.getPluginManager().registerEvents(interruptManager, this);
         
         // Register cleanup listener for player quit
         Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
@@ -83,7 +94,7 @@ public final class AbilityEnginePlugin extends JavaPlugin {
         getLogger().info("Loaded " + modulesLoaded + " external module(s)");
         
         // Load scripts
-        scriptEngine = new ScriptEngine(this, registry, cooldownManager, itemService, sessionManager, eventTriggerRegistry, stateStore, bossBarManager);
+        scriptEngine = new ScriptEngine(this, registry, cooldownManager, itemService, sessionManager, eventTriggerRegistry, stateStore, bossBarManager, executionTracker, entityControlManager, interruptManager);
         File scriptsDir = new File(getDataFolder(), "scripts");
         int scriptsLoaded = scriptEngine.loadAllScripts(scriptsDir);
         getLogger().info("Loaded " + scriptsLoaded + " script(s)");
@@ -111,6 +122,11 @@ public final class AbilityEnginePlugin extends JavaPlugin {
         // Unload external modules
         if (moduleLoader != null) {
             moduleLoader.unloadAllModules();
+        }
+        
+        // Stop entity control manager
+        if (entityControlManager != null) {
+            entityControlManager.stop();
         }
         
         // Stop session manager (cleans up all active sessions)

@@ -10,10 +10,7 @@ import org.graalvm.polyglot.Source;
 import xyz.rishabhvenu.abilityengine.api.AbilityItemService;
 import xyz.rishabhvenu.abilityengine.api.AbilityRegistry;
 import xyz.rishabhvenu.abilityengine.api.CooldownManager;
-import xyz.rishabhvenu.abilityengine.core.AbilityStateStore;
-import xyz.rishabhvenu.abilityengine.core.BossBarManager;
-import xyz.rishabhvenu.abilityengine.core.EventTriggerRegistry;
-import xyz.rishabhvenu.abilityengine.core.SessionManager;
+import xyz.rishabhvenu.abilityengine.core.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -37,6 +34,9 @@ public final class ScriptEngine {
     private final EventTriggerRegistry eventTriggerRegistry;
     private final AbilityStateStore stateStore;
     private final BossBarManager bossBarManager;
+    private final ExecutionTracker executionTracker;
+    private final EntityControlManager entityControlManager;
+    private final InterruptManager interruptManager;
     
     private Engine graalEngine;
     private final Map<String, ScriptContext> loadedScripts = new HashMap<>();
@@ -49,7 +49,10 @@ public final class ScriptEngine {
             SessionManager sessionManager,
             EventTriggerRegistry eventTriggerRegistry,
             AbilityStateStore stateStore,
-            BossBarManager bossBarManager) {
+            BossBarManager bossBarManager,
+            ExecutionTracker executionTracker,
+            EntityControlManager entityControlManager,
+            InterruptManager interruptManager) {
         this.plugin = plugin;
         this.logger = plugin.getLogger();
         this.registry = registry;
@@ -59,6 +62,9 @@ public final class ScriptEngine {
         this.eventTriggerRegistry = eventTriggerRegistry;
         this.stateStore = stateStore;
         this.bossBarManager = bossBarManager;
+        this.executionTracker = executionTracker;
+        this.entityControlManager = entityControlManager;
+        this.interruptManager = interruptManager;
         
         // Initialize GraalVM engine eagerly so reload commands work
         // even when no scripts existed at startup
@@ -147,7 +153,10 @@ public final class ScriptEngine {
             eventTriggerRegistry,
             stateStore,
             bossBarManager,
-            scriptContext
+            scriptContext,
+            executionTracker,
+            entityControlManager,
+            interruptManager
         );
         
         context.getBindings("js").putMember("engine", engineBinding);

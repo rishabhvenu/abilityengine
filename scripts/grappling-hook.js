@@ -101,6 +101,11 @@ engine.ability({
     bossBarColor: "BLUE",
     bossBarLabel: "Grapple"
   },
+  interrupts: ["DEATH", "QUIT"],
+  onInterrupt: function(ctx) {
+    ctx.player().setVelocity(new Vector(0, 0, 0));
+    ctx.player().setFallDistance(0);
+  },
   execute: function(ctx) {
     var player = ctx.player();
     var eyeLoc = player.getEyeLocation();
@@ -108,21 +113,13 @@ engine.ability({
     var world = player.getWorld();
     var ENTITY_HIT_RADIUS = 1.5;
 
-    // Only raytrace blocks upfront to find the max beam endpoint
-    var blockResult = world.rayTraceBlocks(eyeLoc, dir, MAX_RANGE);
-    var hitBlock = blockResult != null && blockResult.getHitBlock() != null;
-
-    var endPoint;
-    if (hitBlock) {
-      var hitVec = blockResult.getHitPosition();
-      endPoint = new Location(world, hitVec.getX(), hitVec.getY(), hitVec.getZ());
-    } else {
-      endPoint = new Location(world,
-        eyeLoc.getX() + dir.getX() * MAX_RANGE,
-        eyeLoc.getY() + dir.getY() * MAX_RANGE,
-        eyeLoc.getZ() + dir.getZ() * MAX_RANGE
-      );
-    }
+    // Raytrace blocks to find the max beam endpoint
+    var ray = engine.raycast({
+      origin: eyeLoc, direction: dir,
+      maxDistance: MAX_RANGE, detect: ["BLOCK"]
+    });
+    var hitBlock = ray.type === "BLOCK";
+    var endPoint = ray.location;
 
     // Beam origin is locked at fire time
     var originLoc = eyeLoc.clone();
@@ -173,9 +170,9 @@ engine.ability({
           // Latch sound + freeze the entity until player arrives
           engine.effects.sound(anchor, "block.chain.place", 1.0, 0.5);
 
-          try {
-            engine.effects.potion(targetEntity, "SLOWNESS", 200, 255);
-          } catch(ex) {}
+          engine.control.freeze(targetEntity, {
+            duration: 200, preventMovement: true
+          }, ctx.execution());
 
           player.sendMessage("§b§lLatched!");
           phase = "zip";
@@ -216,8 +213,7 @@ engine.ability({
         }
 
         if (tick >= RETRACT_TICKS) {
-          engine.cooldowns.set(player, "grapple_shot", MISS_COOLDOWN);
-          engine.ui.removeBar(player, "grapple_shot");
+          ctx.overrideCooldown(MISS_COOLDOWN);
           ctx.cancelTask(taskId);
           return;
         }
@@ -230,9 +226,7 @@ engine.ability({
           if (!targetEntity.isValid() || targetEntity.isDead()) {
             player.setVelocity(new Vector(0, 0, 0));
             player.setFallDistance(0);
-            try {
-              targetEntity.removePotionEffect(Java.type("org.bukkit.potion.PotionEffectType").SLOWNESS);
-            } catch(ex) {}
+            engine.control.unfreeze(targetEntity, ctx.execution());
             ctx.cancelTask(taskId);
             return;
           }
@@ -260,13 +254,11 @@ engine.ability({
           player.setFallDistance(0);
 
           if (hitType === "entity") {
-            // Visual explosion + sound, swap freeze for brief slowness
+            // Visual explosion + sound, unfreeze + brief impact slowness
+            engine.control.unfreeze(targetEntity, ctx.execution());
             world.spawnParticle(Particle.EXPLOSION_EMITTER, anchor, 1, 0, 0, 0, 0);
             engine.effects.sound(anchor, "entity.generic.explode", 0.7, 1.4);
-            try {
-              targetEntity.removePotionEffect(Java.type("org.bukkit.potion.PotionEffectType").SLOWNESS);
-              engine.effects.potion(targetEntity, "SLOWNESS", 20, 2);
-            } catch(ex) {}
+            engine.effects.potion(targetEntity, "SLOWNESS", 20, 2);
           } else {
             pLoc.getWorld().spawnParticle(Particle.DUST, pLoc, 15, 0.3, 0.3, 0.3, 0, TIP_DUST);
           }

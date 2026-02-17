@@ -10,10 +10,7 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.RegisteredListener;
 import org.graalvm.polyglot.Value;
 import xyz.rishabhvenu.abilityengine.api.*;
-import xyz.rishabhvenu.abilityengine.core.AbilityStateStore;
-import xyz.rishabhvenu.abilityengine.core.BossBarManager;
-import xyz.rishabhvenu.abilityengine.core.EventTriggerRegistry;
-import xyz.rishabhvenu.abilityengine.core.SessionManager;
+import xyz.rishabhvenu.abilityengine.core.*;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -35,6 +32,10 @@ public final class EngineBinding {
     private final AbilityStateStore stateStore;
     private final BossBarManager bossBarManager;
     private final ScriptContext scriptContext;
+    private final ExecutionTracker executionTracker;
+    private final PhaseBindings phaseBindings;
+    private final EntityControlManager entityControlManager;
+    private final InterruptManager interruptManager;
     
     // Sub-APIs
     public final TriggerConstants trigger = new TriggerConstants();
@@ -47,6 +48,9 @@ public final class EngineBinding {
     public final EffectsBindings effects;
     public final ProjectileBindings projectile;
     public final AreaEffectBindings areaEffect;
+    public final RaycastBindings raycastBindings;
+    public final MovementBindings movement;
+    public final ControlBindings control;
     
     public EngineBinding(
             Plugin plugin,
@@ -57,7 +61,10 @@ public final class EngineBinding {
             EventTriggerRegistry eventTriggerRegistry,
             AbilityStateStore stateStore,
             BossBarManager bossBarManager,
-            ScriptContext scriptContext) {
+            ScriptContext scriptContext,
+            ExecutionTracker executionTracker,
+            EntityControlManager entityControlManager,
+            InterruptManager interruptManager) {
         this.plugin = plugin;
         this.registry = registry;
         this.cooldownManager = cooldownManager;
@@ -67,6 +74,10 @@ public final class EngineBinding {
         this.stateStore = stateStore;
         this.bossBarManager = bossBarManager;
         this.scriptContext = scriptContext;
+        this.executionTracker = executionTracker;
+        this.phaseBindings = new PhaseBindings(plugin);
+        this.entityControlManager = entityControlManager;
+        this.interruptManager = interruptManager;
         
         this.sessions = new SessionBindings(sessionManager);
         this.cooldowns = new CooldownBindings(cooldownManager);
@@ -76,6 +87,17 @@ public final class EngineBinding {
         this.effects = new EffectsBindings();
         this.projectile = new ProjectileBindings(plugin, scriptContext);
         this.areaEffect = new AreaEffectBindings(plugin);
+        this.raycastBindings = new RaycastBindings();
+        this.movement = new MovementBindings(plugin);
+        this.control = new ControlBindings(entityControlManager);
+    }
+    
+    /**
+     * Performs a raycast with block and entity detection.
+     * Convenience method that delegates to raycastBindings.
+     */
+    public Value raycast(Value config) {
+        return raycastBindings.raycast(config, scriptContext.getGraalContext());
     }
     
     /**
@@ -250,6 +272,27 @@ public final class EngineBinding {
         Value onExpire = config.hasMember("onExpire") ? config.getMember("onExpire") : null;
         Value onCancel = config.hasMember("onCancel") ? config.getMember("onCancel") : null;
         
+        // Extract phases
+        Value phasesValue = config.hasMember("phases") ? config.getMember("phases") : null;
+        
+        // Extract onInterrupt callback
+        Value onInterrupt = config.hasMember("onInterrupt") ? config.getMember("onInterrupt") : null;
+        
+        // Extract interrupts
+        java.util.Set<InterruptType> interruptTypes = new java.util.HashSet<>();
+        if (config.hasMember("interrupts") && config.getMember("interrupts").hasArrayElements()) {
+            Value interruptsArray = config.getMember("interrupts");
+            long size = interruptsArray.getArraySize();
+            for (long i = 0; i < size; i++) {
+                String interruptName = interruptsArray.getArrayElement(i).asString();
+                try {
+                    interruptTypes.add(InterruptType.valueOf(interruptName.toUpperCase()));
+                } catch (IllegalArgumentException e) {
+                    warn("Unknown interrupt type: " + interruptName);
+                }
+            }
+        }
+        
         // Create and register the ability
         ScriptAbility ability = new ScriptAbility(
             id, 
@@ -265,10 +308,19 @@ public final class EngineBinding {
             onProjectileTick,
             onExpire,
             onCancel,
+            phasesValue,
+            onInterrupt,
+            interruptTypes,
             scriptContext,
             stateStore,
             plugin,
-            bossBarManager
+            bossBarManager,
+            cooldownManager,
+            executionTracker,
+            phaseBindings,
+            scriptContext.getGraalContext(),
+            entityControlManager,
+            interruptManager
         );
         registry.register(ability);
         scriptContext.trackAbility(id);

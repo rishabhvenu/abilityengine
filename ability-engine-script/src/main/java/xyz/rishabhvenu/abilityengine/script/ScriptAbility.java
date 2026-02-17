@@ -3,14 +3,13 @@ package xyz.rishabhvenu.abilityengine.script;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.plugin.Plugin;
+import org.graalvm.polyglot.Context;
+import org.graalvm.polyglot.Value;
 import xyz.rishabhvenu.abilityengine.api.*;
-import xyz.rishabhvenu.abilityengine.core.AbilityStateStore;
-import xyz.rishabhvenu.abilityengine.core.BossBarManager;
+import xyz.rishabhvenu.abilityengine.core.*;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
+import java.util.*;
 
 /**
  * Bridges a JavaScript-defined ability to the Java Ability interface.
@@ -30,12 +29,21 @@ final class ScriptAbility implements Ability {
     private final org.graalvm.polyglot.Value onProjectileTick;
     private final org.graalvm.polyglot.Value onExpire;
     private final org.graalvm.polyglot.Value onCancel;
+    private final org.graalvm.polyglot.Value phasesValue;
+    private final org.graalvm.polyglot.Value onInterruptCallback;
+    private final Set<InterruptType> interruptTypes;
     
     // Dependencies for creating exec context
     private final ScriptContext scriptContext;
     private final AbilityStateStore stateStore;
     private final Plugin plugin;
     private final BossBarManager bossBarManager;
+    private final CooldownManager cooldownManager;
+    private final ExecutionTracker executionTracker;
+    private final PhaseBindings phaseBindings;
+    private final Context graalContext;
+    private final EntityControlManager entityControlManager;
+    private final InterruptManager interruptManager;
     
     ScriptAbility(
             String id,
@@ -51,10 +59,19 @@ final class ScriptAbility implements Ability {
             org.graalvm.polyglot.Value onProjectileTick,
             org.graalvm.polyglot.Value onExpire,
             org.graalvm.polyglot.Value onCancel,
+            org.graalvm.polyglot.Value phasesValue,
+            org.graalvm.polyglot.Value onInterruptCallback,
+            Set<InterruptType> interruptTypes,
             ScriptContext scriptContext,
             AbilityStateStore stateStore,
             Plugin plugin,
-            BossBarManager bossBarManager) {
+            BossBarManager bossBarManager,
+            CooldownManager cooldownManager,
+            ExecutionTracker executionTracker,
+            PhaseBindings phaseBindings,
+            Context graalContext,
+            EntityControlManager entityControlManager,
+            InterruptManager interruptManager) {
         this.id = id;
         this.triggers = triggers;
         this.conditions = conditions;
@@ -68,10 +85,19 @@ final class ScriptAbility implements Ability {
         this.onProjectileTick = onProjectileTick;
         this.onExpire = onExpire;
         this.onCancel = onCancel;
+        this.phasesValue = phasesValue;
+        this.onInterruptCallback = onInterruptCallback;
+        this.interruptTypes = interruptTypes;
         this.scriptContext = scriptContext;
         this.stateStore = stateStore;
         this.plugin = plugin;
         this.bossBarManager = bossBarManager;
+        this.cooldownManager = cooldownManager;
+        this.executionTracker = executionTracker;
+        this.phaseBindings = phaseBindings;
+        this.graalContext = graalContext;
+        this.entityControlManager = entityControlManager;
+        this.interruptManager = interruptManager;
     }
     
     @Override
@@ -93,15 +119,40 @@ final class ScriptAbility implements Ability {
     public void execute(AbilityContext context) {
         if (executeFunction != null && executeFunction.canExecute()) {
             try {
+                // Create execution instance
+                AbilityExecutionInstance execution = new AbilityExecutionInstance(
+                    id,
+                    context.player().getUniqueId(),
+                    plugin,
+                    executionTracker,
+                    context,
+                    onInterruptCallback,
+                    entityControlManager
+                );
+                
+                // Register interrupts if defined
+                if (interruptTypes != null && !interruptTypes.isEmpty()) {
+                    interruptManager.registerInterrupts(execution, interruptTypes);
+                }
+                
                 // Wrap in enhanced execution context
                 AbilityExecContext execContext = new AbilityExecContext(
                     context,
                     id,
                     scriptContext,
                     stateStore,
-                    plugin
+                    plugin,
+                    cooldownManager,
+                    bossBarManager,
+                    execution
                 );
                 
+                // Start phases if defined
+                if (phasesValue != null && phasesValue.hasMembers()) {
+                    phaseBindings.startPhases(execution, phasesValue, execContext, graalContext);
+                }
+                
+                // Execute the main function
                 executeFunction.execute(execContext);
                 
                 // Auto-trigger boss bar if configured

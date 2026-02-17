@@ -2,6 +2,8 @@ package xyz.rishabhvenu.abilityengine.script;
 
 import org.bukkit.Bukkit;
 import org.bukkit.block.Block;
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
@@ -9,8 +11,13 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import org.graalvm.polyglot.Value;
 import xyz.rishabhvenu.abilityengine.api.AbilityContext;
+import xyz.rishabhvenu.abilityengine.api.CooldownManager;
 import xyz.rishabhvenu.abilityengine.api.TriggerType;
 import xyz.rishabhvenu.abilityengine.core.AbilityStateStore;
+import xyz.rishabhvenu.abilityengine.core.BossBarManager;
+import xyz.rishabhvenu.abilityengine.core.PhaseInstance;
+
+import java.time.Duration;
 
 /**
  * Enhanced execution context passed to JavaScript ability callbacks.
@@ -18,6 +25,8 @@ import xyz.rishabhvenu.abilityengine.core.AbilityStateStore;
  * - Ability-scoped state management
  * - Task ownership tracking
  * - Automatic cleanup
+ * - Phase API access
+ * - Cooldown override
  */
 public final class AbilityExecContext {
     
@@ -26,6 +35,9 @@ public final class AbilityExecContext {
     private final ScriptContext scriptContext;
     private final AbilityStateStore stateStore;
     private final Plugin plugin;
+    private final CooldownManager cooldownManager;
+    private final BossBarManager bossBarManager;
+    private final AbilityExecutionInstance execution;
     
     // Ability-scoped state API
     public final AbilityScopedState state;
@@ -35,13 +47,19 @@ public final class AbilityExecContext {
             String abilityId,
             ScriptContext scriptContext,
             AbilityStateStore stateStore,
-            Plugin plugin) {
+            Plugin plugin,
+            CooldownManager cooldownManager,
+            BossBarManager bossBarManager,
+            AbilityExecutionInstance execution) {
         this.raw = raw;
         this.abilityId = abilityId;
         this.scriptContext = scriptContext;
         this.stateStore = stateStore;
         this.plugin = plugin;
-        this.state = new AbilityScopedState(abilityId, stateStore);
+        this.cooldownManager = cooldownManager;
+        this.bossBarManager = bossBarManager;
+        this.execution = execution;
+        this.state = stateStore != null ? new AbilityScopedState(abilityId, stateStore) : null;
     }
     
     // Delegate to raw AbilityContext
@@ -91,7 +109,13 @@ public final class AbilityExecContext {
             }
         }, delayTicks, periodTicks).getTaskId();
         
-        scriptContext.trackAbilityTask(abilityId, taskId);
+        // Track on execution instance if available, otherwise on script context
+        if (execution != null) {
+            execution.trackTask(taskId);
+        } else if (scriptContext != null) {
+            scriptContext.trackAbilityTask(abilityId, taskId);
+        }
+        
         return taskId;
     }
     
@@ -116,7 +140,13 @@ public final class AbilityExecContext {
             }
         }, delayTicks).getTaskId();
         
-        scriptContext.trackAbilityTask(abilityId, taskId);
+        // Track on execution instance if available, otherwise on script context
+        if (execution != null) {
+            execution.trackTask(taskId);
+        } else if (scriptContext != null) {
+            scriptContext.trackAbilityTask(abilityId, taskId);
+        }
+        
         return taskId;
     }
     
@@ -127,6 +157,78 @@ public final class AbilityExecContext {
      */
     public void cancelTask(int taskId) {
         Bukkit.getScheduler().cancelTask(taskId);
+    }
+    
+    /**
+     * Gets the current phase instance (if phases are active).
+     * 
+     * @return PhaseInstance or null if no phases
+     */
+    public PhaseInstance phase() {
+        if (execution == null) {
+            return null;
+        }
+        return (PhaseInstance) execution.getActivePhase();
+    }
+    
+    /**
+     * Gets the execution instance.
+     * 
+     * @return The execution instance
+     */
+    public AbilityExecutionInstance execution() {
+        return execution;
+    }
+    
+    /**
+     * Overrides the cooldown for this ability.
+     * Updates both the cooldown manager and refreshes the boss bar.
+     * 
+     * @param seconds New cooldown duration in seconds
+     */
+    public void overrideCooldown(double seconds) {
+        if (cooldownManager == null || bossBarManager == null) {
+            return;
+        }
+        
+        Duration newCooldown = Duration.ofMillis((long) (seconds * 1000));
+        cooldownManager.setCooldown(raw.player(), abilityId, newCooldown);
+        
+        // Refresh boss bar if one exists
+        bossBarManager.removeBar(raw.player(), abilityId);
+        if (seconds > 0) {
+            bossBarManager.showCooldownBar(
+                plugin,
+                raw.player(),
+                abilityId,
+                abilityId,
+                (int) Math.ceil(seconds),
+                BarColor.GREEN,
+                BarStyle.SOLID
+            );
+        }
+    }
+    
+    /**
+     * Shortens the remaining cooldown by a percentage.
+     * 
+     * @param percent Percentage to reduce (0-100)
+     */
+    public void shortenCooldown(double percent) {
+        if (cooldownManager == null || bossBarManager == null) {
+            return;
+        }
+        
+        Duration remaining = cooldownManager.getRemainingCooldown(raw.player().getUniqueId(), abilityId);
+        if (remaining.isZero()) {
+            return;
+        }
+        
+        double factor = 1.0 - (percent / 100.0);
+        long newMillis = (long) (remaining.toMillis() * factor);
+        double newSeconds = newMillis / 1000.0;
+        
+        overrideCooldown(newSeconds);
     }
     
     /**
