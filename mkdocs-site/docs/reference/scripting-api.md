@@ -40,20 +40,110 @@ engine.ability({
 - `onExpire` (Function, optional) - Called when session expires
 - `onCancel` (Function, optional) - Called when session is cancelled
 
-**Context Object** (`ctx`):
+**Context Object** (`ctx`) — see [ctx Reference](#ctx-reference-abilityexeccontext) below for full details.
 
-- `ctx.player()` - Player object (method call!)
-- `ctx.trigger()` - TriggerType
-- `ctx.targetEntity()` - Entity or null
-- `ctx.targetBlock()` - Block or null
-- `ctx.item()` - ItemStack or null
-- `ctx.event()` - Event or null
-- `ctx.state.get(key)` - Get ability-scoped state
-- `ctx.state.set(key, value)` - Set ability-scoped state
-- `ctx.state.clear()` - Clear ability-scoped state
-- `ctx.scheduleRepeating(func, delay, period)` - Schedule ability-scoped task
-- `ctx.scheduleDelayed(func, delay)` - Schedule ability-scoped delayed task
-- `ctx.cancelTask(taskId)` - Cancel task
+---
+
+## ctx Reference (AbilityExecContext)
+
+The `ctx` object passed to `execute` / `onTrigger` is an `AbilityExecContext`. All accessors are **method calls** (use parentheses).
+
+### Event Data
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `ctx.player()` | `Player` | The player who triggered the ability |
+| `ctx.trigger()` | `TriggerType` | Which trigger fired (e.g. `DOUBLE_SHIFT`) |
+| `ctx.targetEntity()` | `Entity` or `null` | Target entity (for entity triggers / combat) |
+| `ctx.targetBlock()` | `Block` or `null` | Target block (for block interactions / projectile hits) |
+| `ctx.item()` | `ItemStack` or `null` | The ability item in hand |
+| `ctx.event()` | `Event` or `null` | The raw Bukkit event |
+
+### ctx.state — Ability-Scoped State
+
+State is automatically scoped to **this ability + this player**. Cleaned up on quit and script unload.
+
+#### ctx.state.get(key)
+
+Returns the stored value, or `null` if not set.
+
+- `key` (String) — State key
+
+```javascript
+var count = ctx.state.get("hitCount") || 0;
+```
+
+#### ctx.state.set(key, value)
+
+Stores a value.
+
+- `key` (String) — State key
+- `value` (any) — Value to store
+
+```javascript
+ctx.state.set("hitCount", count + 1);
+```
+
+#### ctx.state.clear()
+
+Removes all state for this ability + player.
+
+```javascript
+ctx.state.clear();
+```
+
+### ctx.scheduleRepeating(func, delayTicks, periodTicks)
+
+Schedules an ability-scoped repeating task. The task is **automatically cancelled** when the ability is unloaded or the player quits.
+
+**Parameters:**
+
+- `func` (Function) — Callback executed each period
+- `delayTicks` (Number) — Initial delay in ticks (20 ticks = 1 second)
+- `periodTicks` (Number) — Interval between executions in ticks
+
+**Returns:** `int` — Task ID (can be passed to `ctx.cancelTask()`)
+
+```javascript
+var taskId = ctx.scheduleRepeating(function() {
+  engine.effects.particle(
+    ctx.player().getLocation(),
+    "FLAME", null, 10, 0.3, 0.3, 0.3
+  );
+}, 0, 5);  // Start immediately, run every 5 ticks (0.25s)
+```
+
+### ctx.scheduleDelayed(func, delayTicks)
+
+Schedules an ability-scoped one-shot delayed task. Automatically cancelled on unload/quit.
+
+**Parameters:**
+
+- `func` (Function) — Callback to execute
+- `delayTicks` (Number) — Delay in ticks
+
+**Returns:** `int` — Task ID
+
+```javascript
+ctx.scheduleDelayed(function() {
+  ctx.player().sendMessage("§c3 seconds have passed!");
+}, 60);  // 3 seconds
+```
+
+### ctx.cancelTask(taskId)
+
+Cancels a previously scheduled ability-scoped task.
+
+**Parameters:**
+
+- `taskId` (int) — The ID returned by `ctx.scheduleRepeating()` or `ctx.scheduleDelayed()`
+
+```javascript
+var taskId = ctx.scheduleRepeating(function() { /* ... */ }, 0, 20);
+
+// Later:
+ctx.cancelTask(taskId);
+```
 
 ---
 
@@ -196,50 +286,99 @@ Clears all state for ability + player.
 
 ### engine.ui.cooldownBar(player, abilityId, durationSeconds, label, color)
 
-Shows a cooldown progress bar.
+Creates a boss bar that fills from 0% to 100% over the given duration, then auto-removes itself. Useful for showing cooldown recharge or channel progress.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `player` | Player | Yes | Player to show the bar to |
+| `abilityId` | String | Yes | Unique ID for this bar (used to remove it later) |
+| `durationSeconds` | Number | Yes | How long the bar takes to fill (in seconds) |
+| `label` | String | No | Display text shown on the bar (defaults to ability ID) |
+| `color` | String | No | Bar color (defaults to `"GREEN"`) |
+
+**Valid colors:** `BLUE`, `GREEN`, `PINK`, `PURPLE`, `RED`, `WHITE`, `YELLOW`
 
 ```javascript
+// Show a 10-second recharge bar
 engine.ui.cooldownBar(
   ctx.player(),
   "my_ability",
   10,
-  "Recharging",
+  "Recharging...",
   "BLUE"
 );
 ```
 
-**Parameters:**
-- `player` (Player)
-- `abilityId` (String) - Unique ID for this bar
-- `durationSeconds` (Number) - Duration
-- `label` (String, optional) - Display text
-- `color` (String, optional) - Bar color: BLUE, GREEN, PINK, PURPLE, RED, WHITE, YELLOW
+**Note:** If you use extended cooldown config (`cooldown: { seconds: 5, showBossBar: true }`), boss bars are created automatically — you don't need to call this manually.
 
 ### engine.ui.removeBar(player, abilityId)
 
-Removes a boss bar.
+Immediately removes a boss bar created by `cooldownBar()`.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `player` | Player | Yes | Player whose bar to remove |
+| `abilityId` | String | Yes | The same ID used when creating the bar |
+
+```javascript
+// Remove a bar early (e.g. ability was cancelled)
+engine.ui.removeBar(ctx.player(), "my_ability");
+```
 
 ---
 
 ## Effects Library
 
+High-level effect utilities exposed as `engine.effects`. These abstract away GraalVM float-casting issues and Bukkit boilerplate.
+
 ### engine.effects.particle(location, particleType, colorHex, count, spreadX, spreadY, spreadZ)
 
-Spawn particles with optional color.
+Spawns particles at a location. For colored particles (`ENTITY_EFFECT`), pass a hex color string. For non-colored particle types, pass `null` for `colorHex`.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `location` | Location | Yes | Where to spawn particles |
+| `particleType` | String | Yes | Bukkit Particle enum name (e.g. `"FLAME"`, `"DUST"`, `"ENTITY_EFFECT"`, `"HEART"`, `"CLOUD"`) |
+| `colorHex` | String or null | No | Hex color for `ENTITY_EFFECT` particles (e.g. `"#FF0000"`). Pass `null` for all other types. |
+| `count` | Number | Yes | Number of particles |
+| `spreadX` | Number | Yes | Horizontal spread (X axis) |
+| `spreadY` | Number | Yes | Vertical spread |
+| `spreadZ` | Number | Yes | Horizontal spread (Z axis) |
 
 ```javascript
+// Colored entity effect particles
 engine.effects.particle(
   ctx.player().getLocation(),
-  "DUST",
-  "#FF0000",
-  50,
+  "ENTITY_EFFECT", "#FF0000", 50,
   0.5, 0.5, 0.5
+);
+
+// Flame particles (no color needed)
+engine.effects.particle(
+  ctx.player().getLocation(),
+  "FLAME", null, 20,
+  0.3, 0.3, 0.3
 );
 ```
 
 ### engine.effects.sound(location, sound, volume, pitch)
 
-Play sound effect.
+Plays a sound at a location. Handles GraalVM float casting internally.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `location` | Location | Yes | Where to play the sound |
+| `sound` | String | Yes | Bukkit Sound enum name (e.g. `"ENTITY_ARROW_SHOOT"`, `"ENTITY_ENDER_DRAGON_GROWL"`, `"BLOCK_ANVIL_LAND"`) |
+| `volume` | Number | Yes | Volume (1.0 = normal, 0.5 = half, 2.0 = double) |
+| `pitch` | Number | Yes | Pitch (1.0 = normal, 0.5 = low, 2.0 = high) |
 
 ```javascript
 engine.effects.sound(
@@ -248,53 +387,155 @@ engine.effects.sound(
   1.0,
   1.2
 );
+
+engine.effects.sound(
+  ctx.player().getLocation(),
+  "ENTITY_WITCH_THROW",
+  1.0,
+  0.8
+);
 ```
 
 ### engine.effects.potion(target, effectType, durationTicks, amplifier)
 
-Apply potion effect.
+Applies a potion effect to a living entity.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | LivingEntity | Yes | Entity to apply the effect to |
+| `effectType` | String | Yes | PotionEffectType name (e.g. `"POISON"`, `"SPEED"`, `"REGENERATION"`, `"INVISIBILITY"`, `"SLOW"`, `"BLINDNESS"`) |
+| `durationTicks` | Number | Yes | Duration in ticks (20 ticks = 1 second) |
+| `amplifier` | Number | Yes | Effect level (0 = level I, 1 = level II, etc.) |
 
 ```javascript
-engine.effects.potion(
-  ctx.targetEntity(),
-  "POISON",
-  100,
-  1
-);
+// Poison II for 5 seconds
+engine.effects.potion(ctx.targetEntity(), "POISON", 100, 1);
+
+// Speed I for 10 seconds on self
+engine.effects.potion(ctx.player(), "SPEED", 200, 0);
+
+// Invisibility I for 30 seconds
+engine.effects.potion(ctx.player(), "INVISIBILITY", 600, 0);
 ```
 
 ### engine.effects.knockback(entity, direction, strength)
 
-Apply knockback.
+Applies a velocity-based knockback to an entity.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `entity` | Entity | Yes | Entity to knock back |
+| `direction` | Vector | Yes | Direction vector (e.g. from `Location.getDirection()`) |
+| `strength` | Number | Yes | Knockback multiplier (1.0 = normal, 2.0 = double) |
 
 ```javascript
+// Knock target away from player
 var dir = ctx.player().getLocation().getDirection();
 engine.effects.knockback(ctx.targetEntity(), dir, 2.0);
+
+// Knock player upward
+var up = ctx.player().getLocation().getDirection().setX(0).setZ(0).setY(1);
+engine.effects.knockback(ctx.player(), up, 1.5);
 ```
 
 ### engine.effects.explosion(location, power, setFire, breakBlocks)
 
-Create explosion.
+Creates an explosion at a location.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `location` | Location | Yes | Center of explosion |
+| `power` | Number | Yes | Explosion power (TNT = 4.0, Creeper = 3.0) |
+| `setFire` | Boolean | Yes | Whether to set fire to blocks |
+| `breakBlocks` | Boolean | Yes | Whether to destroy blocks |
 
 ```javascript
+// Safe cosmetic explosion (no block damage)
 engine.effects.explosion(
   ctx.targetBlock().getLocation(),
-  3.0,
-  false,
-  false
+  3.0, false, false
+);
+
+// Destructive explosion with fire
+engine.effects.explosion(
+  ctx.player().getLocation(),
+  4.0, true, true
 );
 ```
 
 ### engine.effects.decayTerrain(center, radius, rules)
 
-Decay terrain safely.
+Decays terrain in a radius around a center point. Uses predefined rule sets to prevent accidental world destruction.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `center` | Location | Yes | Center of the decay area |
+| `radius` | Number | Yes | Block radius to affect |
+| `rules` | String | Yes | Which blocks to decay (see below) |
+
+**Rules:**
+
+| Rule | Behavior |
+|------|----------|
+| `"NATURE_ONLY"` | Grass/mycelium/podzol → dirt; leaves break naturally; tall grass, short grass, ferns, dead bush → air |
+| `"STONE_DECAY"` | Stone → cobblestone; deepslate → cobbled deepslate |
+| `"ICE_MELT"` | Ice/packed ice/blue ice → water; snow/snow block → air |
 
 ```javascript
 engine.effects.decayTerrain(
   ctx.player().getLocation(),
   5,
-  "NATURE_ONLY"  // or "STONE_ONLY", "ALL_BREAKABLE"
+  "NATURE_ONLY"
 );
+```
+
+### engine.effects.decayTerrainCustom(center, radius, ruleFunction)
+
+Decays terrain using a custom JavaScript rule function. The function receives each `Block` and should return a material name string to replace it, or nothing to leave it unchanged.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `center` | Location | Yes | Center of decay area |
+| `radius` | Number | Yes | Block radius |
+| `ruleFunction` | Function | Yes | Called per block; return a material name string to replace, or nothing to skip |
+
+```javascript
+engine.effects.decayTerrainCustom(
+  ctx.player().getLocation(),
+  3,
+  function(block) {
+    if (block.getType().name() === "SAND") {
+      return "GLASS";  // Turn sand into glass
+    }
+    // Return nothing to leave block unchanged
+  }
+);
+```
+
+### Beam / Visual Helpers
+
+There are currently **no built-in beam or line-drawing helpers** in the effects library. For beams, use `engine.effects.particle()` inside a `ctx.scheduleRepeating()` loop to draw particle lines between two points manually.
+
+```javascript
+// Example: simple beam between two locations
+var start = ctx.player().getEyeLocation();
+var dir = start.getDirection();
+var step = 0.5;
+
+for (var i = 0; i < 20; i++) {
+  var point = start.clone().add(dir.clone().multiply(i * step));
+  engine.effects.particle(point, "FLAME", null, 1, 0, 0, 0);
+}
 ```
 
 ---
@@ -434,22 +675,66 @@ var active = engine.sessions.getActive(ctx.player());
 
 ## Cooldowns
 
+Cooldown management. Cooldowns are set automatically when an ability has a `cooldown` config, but you can also control them manually.
+
 ### engine.cooldowns.isReady(player, abilityId)
 
-Returns `true` if ability is ready (not on cooldown).
+Returns `true` if the ability is off cooldown and can be used.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `player` | Player | Yes | Player to check |
+| `abilityId` | String | Yes | Ability ID to check |
+
+**Returns:** `boolean`
+
+```javascript
+if (engine.cooldowns.isReady(ctx.player(), "fireball")) {
+  ctx.player().sendMessage("§aFireball is ready!");
+} else {
+  ctx.player().sendMessage("§cFireball is on cooldown.");
+}
+```
 
 ### engine.cooldowns.set(player, abilityId, seconds)
 
-Sets a cooldown manually.
+Manually sets (or overrides) a cooldown. This does **not** trigger a boss bar — use `engine.ui.cooldownBar()` separately if you want visual feedback, or use the `cooldown` config object on `engine.ability()` for automatic boss bar binding.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `player` | Player | Yes | Player to set cooldown for |
+| `abilityId` | String | Yes | Ability ID |
+| `seconds` | Number | Yes | Cooldown duration in seconds |
+
+```javascript
+// Set a 30-second cooldown manually
+engine.cooldowns.set(ctx.player(), "ultimate", 30);
+
+// Reset cooldown (make ability immediately available)
+engine.cooldowns.set(ctx.player(), "fireball", 0);
+```
 
 ### engine.cooldowns.remaining(player, abilityId)
 
-Returns remaining cooldown Duration object.
+Returns the remaining cooldown as a Java `Duration` object.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `player` | Player | Yes | Player to check |
+| `abilityId` | String | Yes | Ability ID |
+
+**Returns:** `java.time.Duration` — call `.toSeconds()`, `.toMillis()`, or `.isZero()` on it.
 
 ```javascript
 var remaining = engine.cooldowns.remaining(ctx.player(), "fireball");
 if (remaining.toSeconds() > 0) {
-  ctx.player().sendMessage("Wait " + remaining.toSeconds() + " seconds");
+  ctx.player().sendMessage("§cWait " + remaining.toSeconds() + "s");
 }
 ```
 
@@ -457,16 +742,20 @@ if (remaining.toSeconds() > 0) {
 
 ## Items
 
+Item creation and management. Works with both simple ability-tagged items and rich item templates from `engine.item()`.
+
 ### engine.items.create(abilityIdOrConfig)
 
-Creates an ability item. Accepts either a string (ability ID) or a config object.
+Creates an `ItemStack` tagged as an ability item. Accepts a string (for simple items) or a config object (for advanced items).
 
-**Simple Form:**
+**Simple Form** — creates a default item for the ability's material:
+
 ```javascript
 var item = engine.items.create("fireball");
 ```
 
-**Extended Form:**
+**Extended Form** — full control over the item:
+
 ```javascript
 var item = engine.items.create({
   type: "DIAMOND_SWORD",
@@ -479,46 +768,114 @@ var item = engine.items.create({
 ```
 
 **Config Object:**
-- `type` (String, required) - Material
-- `name` (String, optional) - Display name with `&` codes
-- `lore` (Array, optional) - Lore lines with `&` codes
-- `abilityId` or `abilities` (String/Array, optional) - Ability attachment
-- `unbreakable` (Boolean, optional)
-- `enchantments` (Object, optional)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | String | Yes | Material name (e.g. `"BOW"`, `"DIAMOND_SWORD"`) |
+| `name` | String | No | Display name with `&` color codes (e.g. `"&c&lFire Blade"`) |
+| `lore` | Array of String | No | Lore lines with `&` color codes |
+| `abilityId` | String | No | Single ability ID to attach |
+| `abilities` | Array | No | Multiple abilities to attach (as JSON array with `id` and `trigger`) |
+| `unbreakable` | Boolean | No | Make item unbreakable |
+| `enchantments` | Object | No | Map of enchantment name to level |
+
+**Returns:** `ItemStack`
 
 ### engine.items.give(player, itemIdOrAbilityId)
 
-Gives an item to a player. Supports both item template IDs (from `engine.item()`) and ability IDs.
+Gives an item to a player. First checks for an item template registered with `engine.item()` by the given ID; if none found, falls back to creating a simple ability item.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `player` | Player | Yes | Player to give the item to |
+| `itemIdOrAbilityId` | String | Yes | Item template ID (from `engine.item()`) or ability ID |
 
 ```javascript
+// Give a templated item (defined via engine.item())
 engine.items.give(ctx.player(), "legendary_poison_bow");
+
+// Give a simple ability item
+engine.items.give(ctx.player(), "fireball");
 ```
 
 ### engine.items.isAbilityItem(item)
 
-Returns `true` if item is an ability item.
+Returns `true` if the item has ability metadata in its PDC.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `item` | ItemStack | Yes | Item to check |
+
+**Returns:** `boolean`
+
+```javascript
+var mainHand = ctx.player().getInventory().getItemInMainHand();
+if (engine.items.isAbilityItem(mainHand)) {
+  ctx.player().sendMessage("You're holding an ability item!");
+}
+```
 
 ### engine.items.getAbilityId(item)
 
-Returns ability ID for item (or `null`).
+Returns the primary ability ID attached to an item, or `null` if it's not an ability item.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `item` | ItemStack | Yes | Item to inspect |
+
+**Returns:** `String` or `null`
+
+```javascript
+var id = engine.items.getAbilityId(ctx.item());
+if (id !== null) {
+  engine.log("This item has ability: " + id);
+}
+```
 
 ---
 
 ## Scheduling
 
+Global scheduling utilities. These tasks are **not** tied to any specific ability and must be cancelled manually. For ability-scoped tasks that auto-cancel on quit/unload, use `ctx.scheduleRepeating()` and `ctx.scheduleDelayed()` instead.
+
 ### engine.scheduleDelayed(function, delayTicks)
 
-Schedules a one-time delayed task (global, not ability-scoped).
+Schedules a one-time delayed task.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `function` | Function | Yes | Callback to execute |
+| `delayTicks` | Number | Yes | Delay in ticks (20 ticks = 1 second) |
+
+**Returns:** `int` — Task ID
 
 ```javascript
 engine.scheduleDelayed(function() {
-  engine.log("Delayed task");
-}, 20 * 5);  // 5 seconds
+  engine.log("5 seconds have passed");
+}, 20 * 5);
 ```
 
 ### engine.scheduleRepeating(function, delayTicks, periodTicks)
 
-Schedules a repeating task (global, not ability-scoped).
+Schedules a repeating task.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `function` | Function | Yes | Callback executed each period |
+| `delayTicks` | Number | Yes | Initial delay in ticks |
+| `periodTicks` | Number | Yes | Interval between executions in ticks |
+
+**Returns:** `int` — Task ID
 
 ```javascript
 var taskId = engine.scheduleRepeating(function() {
@@ -528,9 +885,23 @@ var taskId = engine.scheduleRepeating(function() {
 
 ### engine.cancelTask(taskId)
 
-Cancels a scheduled task.
+Cancels a global scheduled task.
 
-**Note:** Prefer `ctx.scheduleDelayed()` and `ctx.scheduleRepeating()` inside abilities for automatic cleanup.
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `taskId` | int | Yes | ID returned by `scheduleDelayed` or `scheduleRepeating` |
+
+```javascript
+var taskId = engine.scheduleRepeating(function() { /* ... */ }, 0, 20);
+
+// Later:
+engine.cancelTask(taskId);
+```
+
+!!! tip
+    Prefer `ctx.scheduleDelayed()` and `ctx.scheduleRepeating()` inside ability functions — those are automatically cancelled when the ability unloads or the player quits, preventing memory leaks.
 
 ---
 

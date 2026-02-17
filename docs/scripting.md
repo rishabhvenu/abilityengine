@@ -293,12 +293,12 @@ High-level effect utilities that abstract away GraalVM type issues:
 
 #### `engine.effects.particle(location, particleType, colorHex, count, spreadX, spreadY, spreadZ)`
 
-Spawn particles with optional color.
+Spawn particles. For colored particles (`ENTITY_EFFECT`), pass a hex color string. Pass `null` for non-colored types.
 
 ```javascript
 engine.effects.particle(
   ctx.player().getLocation(),
-  "DUST",
+  "ENTITY_EFFECT",
   "#FF0000",
   50,
   0.5, 0.5, 0.5
@@ -358,15 +358,28 @@ engine.effects.explosion(
 Decay terrain safely.
 
 **Rules:**
-- `"NATURE_ONLY"` - Only grass, dirt, leaves, flowers
-- `"STONE_ONLY"` - Only stone types
-- `"ALL_BREAKABLE"` - All non-bedrock blocks
+- `"NATURE_ONLY"` - Grass/mycelium/podzol → dirt; leaves break naturally; tall grass, ferns, dead bush → air
+- `"STONE_DECAY"` - Stone → cobblestone; deepslate → cobbled deepslate
+- `"ICE_MELT"` - Ice types → water; snow → air
 
 ```javascript
 engine.effects.decayTerrain(
   ctx.player().getLocation(),
   5,
   "NATURE_ONLY"
+);
+```
+
+#### `engine.effects.decayTerrainCustom(center, radius, ruleFunction)`
+
+Decay terrain using a custom JavaScript rule function. Return a material name to replace the block, or nothing to skip it.
+
+```javascript
+engine.effects.decayTerrainCustom(
+  ctx.player().getLocation(), 3,
+  function(block) {
+    if (block.getType().name() === "SAND") return "GLASS";
+  }
 );
 ```
 
