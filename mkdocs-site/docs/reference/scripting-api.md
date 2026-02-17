@@ -522,6 +522,59 @@ engine.effects.decayTerrainCustom(
 );
 ```
 
+### engine.effects.blockDamage(location, progress, sourceId, viewRadius)
+
+Sends block-damage crack overlays to all nearby players. This shows the vanilla block-breaking animation (dark cracks) on any block without actually breaking it. Each unique `sourceId` displays an independent crack, so multiple blocks can show cracks simultaneously.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `location` | Location | Yes | The block location to show cracks on |
+| `progress` | Number | Yes | Crack progress from `0.0` (no cracks) to `1.0` (fully cracked) |
+| `sourceId` | Number | Yes | Unique integer ID so multiple blocks crack independently. Different IDs = different cracks. |
+| `viewRadius` | Number | Yes | How far (in blocks) to search for players to send the overlay to |
+
+```javascript
+// Show 50% cracks on a block, visible to players within 48 blocks
+var block = ctx.player().getTargetBlockExact(10);
+if (block !== null) {
+  engine.effects.blockDamage(block.getLocation(), 0.5, 1, 48);
+}
+
+// Animated cracking over time using a repeating task
+var block = ctx.targetBlock();
+var crackStep = 0;
+var taskId = ctx.scheduleRepeating(function() {
+  crackStep++;
+  var progress = crackStep / 10.0;
+  if (progress > 1.0) {
+    ctx.cancelTask(taskId);
+    return;
+  }
+  engine.effects.blockDamage(block.getLocation(), progress, 42, 48);
+}, 0, 4);  // Update every 4 ticks (0.2s)
+```
+
+**Generating unique `sourceId` values:** When cracking multiple blocks at once (e.g., terrain decay), compute a unique ID from relative coordinates:
+
+```javascript
+// Each block in a radius gets its own crack overlay
+for (var dx = -3; dx <= 3; dx++) {
+  for (var dy = -3; dy <= 3; dy++) {
+    for (var dz = -3; dz <= 3; dz++) {
+      var b = center.getBlock().getRelative(dx, dy, dz);
+      if (!b.getType().isSolid()) continue;
+      var sid = (dx + 10) + (dy + 10) * 20 + (dz + 10) * 400;
+      engine.effects.blockDamage(b.getLocation(), 0.3, sid, 48);
+    }
+  }
+}
+```
+
+!!! note
+    The crack overlay is purely visual and client-side. It does not affect block state or durability. The cracks disappear automatically after a few seconds if not refreshed.
+
 ### Beam / Visual Helpers
 
 There are currently **no built-in beam or line-drawing helpers** in the effects library. For beams, use `engine.effects.particle()` inside a `ctx.scheduleRepeating()` loop to draw particle lines between two points manually.

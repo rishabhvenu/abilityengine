@@ -164,6 +164,31 @@ public final class EffectsBindings {
         }
     }
     
+    /**
+     * Sends block-damage crack overlays to all nearby players.
+     * Each unique sourceId shows an independent crack animation.
+     *
+     * @param location  Block location
+     * @param progress  Crack progress 0.0 (none) to 1.0 (fully cracked)
+     * @param sourceId  Unique id so multiple blocks crack independently
+     * @param radius    How far to search for players (blocks)
+     */
+    public void blockDamage(Location location, double progress, double sourceId, double radius) {
+        if (location.getWorld() == null) return;
+        float prog = (float) Math.max(0.0, Math.min(1.0, progress));
+        int sid = (int) sourceId;
+        for (Player player : location.getWorld().getPlayers()) {
+            if (player.getLocation().distanceSquared(location) > radius * radius) continue;
+            try {
+                player.sendBlockDamage(location, prog, sid);
+            } catch (Exception e) {
+                try {
+                    player.sendBlockDamage(location, prog);
+                } catch (Exception ignored) {}
+            }
+        }
+    }
+
     private Color parseColor(String hex) {
         if (hex.startsWith("#")) {
             hex = hex.substring(1);

@@ -383,6 +383,27 @@ engine.effects.decayTerrainCustom(
 );
 ```
 
+#### `engine.effects.blockDamage(location, progress, sourceId, viewRadius)`
+
+Sends block-damage crack overlays (the vanilla breaking animation) to all nearby players. Purely visual — does not affect block state.
+
+**Parameters:**
+- `location` (Location) — Block location to show cracks on
+- `progress` (Number) — Crack progress `0.0` (none) to `1.0` (fully cracked)
+- `sourceId` (Number) — Unique ID so multiple blocks crack independently
+- `viewRadius` (Number) — How far (blocks) to search for players
+
+```javascript
+// Show 50% crack on a block
+engine.effects.blockDamage(block.getLocation(), 0.5, 1, 48);
+
+// Unique IDs from relative coords for multi-block cracking
+var sid = (dx + 10) + (dy + 10) * 20 + (dz + 10) * 400;
+engine.effects.blockDamage(b.getLocation(), progress, sid, 48);
+```
+
+**Note:** Cracks disappear after a few seconds if not refreshed. Useful for terrain decay visuals, channeled abilities, or warning indicators.
+
 ### `engine.projectile` - Projectile Utilities
 
 #### `engine.projectile.spawn(config)`
